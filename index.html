@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Rekap Stok Harian Lapis - Lihat data stok harian untuk Toko dan Tenant">
+    <title>Rekap Stok Harian | Lapis</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body class="public-page">
+    <!-- Public Header -->
+    <header class="public-header">
+        <div class="public-header-left">
+            <span class="logo-icon">📦</span>
+            <div class="logo-text">
+                <h1>Lapis Stok</h1>
+                <span class="logo-subtitle">Rekap Harian</span>
+            </div>
+        </div>
+        <div class="public-header-right">
+            <span class="current-date" id="currentDate"></span>
+            <a href="admin/" class="btn btn-outline btn-sm admin-link" title="Admin Panel">
+                <span>🔐</span> Admin
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="public-main">
+        <!-- Top Row: Compact Filters + Notes side by side -->
+        <div class="public-top-row">
+            <!-- Left: Filters -->
+            <div class="public-filter-card">
+                <div class="pf-group">
+                    <label for="dailyDate">Tanggal</label>
+                    <input type="date" id="dailyDate" class="filter-input">
+                </div>
+                <div class="pf-group">
+                    <label for="dailyLocationType">Lokasi</label>
+                    <select id="dailyLocationType" class="filter-input">
+                        <option value="toko">🏪 Toko</option>
+                        <option value="tenant">🏬 Tenant</option>
+                    </select>
+                </div>
+                <div class="pf-group" id="dailyTenantGroup" style="display:none;">
+                    <label for="dailyTenantSelect">Tenant</label>
+                    <select id="dailyTenantSelect" class="pf-input">
+                        <option value="">-- Pilih --</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Right: Notes (Read-Only) -->
+            <div class="public-notes-card" id="publicNotesSection">
+                <div class="pn-header">
+                    <span>📝</span>
+                    <strong>Catatan</strong>
+                </div>
+                <div class="pn-content" id="publicNotesContent">
+                    <span class="pn-empty">Belum ada catatan</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Full Table (no scroll) -->
+        <div class="public-table-full">
+            <table class="data-table data-table-public" id="dailyTable">
+                <thead>
+                    <tr>
+                        <th class="col-no">No</th>
+                        <th class="col-varian">Varian</th>
+                        <th class="col-num col-group-masuk" colspan="4">MASUK</th>
+                        <th class="col-num col-group-keluar" colspan="8">KELUAR</th>
+                        <th class="col-num col-group-result" colspan="3">HASIL</th>
+                    </tr>
+                    <tr>
+                        <th class="col-no"></th>
+                        <th class="col-varian"></th>
+                        <th class="col-num">Stok Awal</th>
+                        <th class="col-num">Stok In</th>
+                        <th class="col-num">Rolling Masuk</th>
+                        <th class="col-num col-calc">Total Masuk</th>
+                        <th class="col-num">Sales</th>
+                        <th class="col-num">Return Exp</th>
+                        <th class="col-num">Return Tester</th>
+                        <th class="col-num">Keep PO</th>
+                        <th class="col-num">Mix Adj</th>
+                        <th class="col-num">Kirim Stok</th>
+                        <th class="col-num">Rolling Keluar</th>
+                        <th class="col-num col-calc">Total Keluar</th>
+                        <th class="col-num col-calc">Stok Akhir</th>
+                        <th class="col-num">Stok Avail. Closing</th>
+                        <th class="col-num col-selisih">Selisih</th>
+                    </tr>
+                </thead>
+                <tbody id="dailyTableBody">
+                    <tr class="empty-row">
+                        <td colspan="17" class="empty-cell">
+                            <div class="empty-state">
+                                <span class="empty-icon">📋</span>
+                                <p>Pilih tanggal dan lokasi untuk melihat data</p>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+                <tfoot id="dailyTableFoot" style="display:none;">
+                    <tr class="total-row">
+                        <td></td>
+                        <td><strong>TOTAL</strong></td>
+                        <td id="totalStokAwal">0</td>
+                        <td id="totalStokIn">0</td>
+                        <td id="totalRollingMasuk">0</td>
+                        <td id="totalTotalMasuk">0</td>
+                        <td id="totalSales">0</td>
+                        <td id="totalReturnExp">0</td>
+                        <td id="totalReturnTester">0</td>
+                        <td id="totalKeepPO">0</td>
+                        <td id="totalMixAdj">0</td>
+                        <td id="totalKirimStok">0</td>
+                        <td id="totalRollingKeluar">0</td>
+                        <td id="totalTotalKeluar">0</td>
+                        <td id="totalStokAkhir">0</td>
+                        <td id="totalStokAvailable">0</td>
+                        <td id="totalSelisih">0</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+    </main>
+
+    <!-- Toast Notification -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display:none;">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Memuat data...</p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/firebase-config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/data.js"></script>
+    <script src="js/public.js"></script>
+</body>
+
+</html>

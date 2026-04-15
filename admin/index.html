@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="Admin Panel - Sistem Rekap Inventori Stok Lapis - Kelola stok harian dan bulanan untuk Toko dan Tenant">
+    <title>Admin | Rekap Inventori Stok | Lapis</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+    <!-- Login Overlay -->
+    <div class="login-overlay" id="loginOverlay" style="display:none;">
+        <div class="login-card">
+            <div class="login-header">
+                <span class="login-icon">🔐</span>
+                <h2>Admin Login</h2>
+                <p>Masukkan password untuk mengakses admin panel</p>
+            </div>
+            <div class="login-body">
+                <div class="form-group">
+                    <label for="loginPasswordInput">Password</label>
+                    <input type="password" id="loginPasswordInput" class="form-control" 
+                        placeholder="Masukkan password..." 
+                        onkeydown="App.onLoginKeydown(event)">
+                </div>
+                <div class="login-error" id="loginError" style="display:none;">Password salah!</div>
+                <button class="btn btn-primary login-btn" onclick="App.login()">
+                    <span>🔓</span> Masuk
+                </button>
+            </div>
+            <div class="login-footer">
+                <a href="../" class="login-back-link">← Kembali ke Halaman Utama</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <span class="logo-icon">📦</span>
+                <div class="logo-text">
+                    <h1>Lapis Stok</h1>
+                    <span class="logo-subtitle">Admin Panel</span>
+                </div>
+            </div>
+            <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
+                <span></span><span></span><span></span>
+            </button>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-item active" data-section="dashboard" id="nav-dashboard">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">Dashboard</span>
+            </a>
+            <a href="#" class="nav-item" data-section="rekap-harian" id="nav-rekap-harian">
+                <span class="nav-icon">📅</span>
+                <span class="nav-label">Rekap Harian</span>
+            </a>
+            <a href="#" class="nav-item" data-section="rekap-bulanan" id="nav-rekap-bulanan">
+                <span class="nav-icon">📆</span>
+                <span class="nav-label">Rekap Bulanan</span>
+            </a>
+            <a href="#" class="nav-item" data-section="pengaturan" id="nav-pengaturan">
+                <span class="nav-icon">⚙️</span>
+                <span class="nav-label">Pengaturan</span>
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <button class="btn btn-outline btn-sm sidebar-logout-btn" onclick="App.logout()" title="Logout">
+                <span>🚪</span> Logout
+            </button>
+            <div class="firebase-status" id="firebaseStatus">
+                <span class="status-dot offline"></span>
+                <span class="status-text">Firebase: Offline</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content" id="mainContent">
+        <!-- Top Bar -->
+        <header class="top-bar">
+            <button class="menu-btn" id="menuBtn" aria-label="Open menu">
+                <span></span><span></span><span></span>
+            </button>
+            <div class="top-bar-title" id="pageTitle">Dashboard</div>
+            <div class="top-bar-actions">
+                <button class="notes-fab" id="notesFab" onclick="App.openNotes()" title="Catatan Harian">
+                    <span class="notes-fab-icon">📝</span>
+                    <span class="notes-fab-label">Notes</span>
+                </button>
+                <span class="current-date" id="currentDate"></span>
+            </div>
+        </header>
+
+        <!-- Dashboard Section -->
+        <section class="content-section active" id="section-dashboard">
+            <div class="section-header">
+                <h2>Dashboard Overview</h2>
+                <p class="section-desc">Ringkasan stok hari ini</p>
+            </div>
+            <div class="stats-grid" id="dashboardStats">
+                <div class="stat-card stat-primary">
+                    <div class="stat-icon">🏪</div>
+                    <div class="stat-info">
+                        <span class="stat-label">Total Varian Toko</span>
+                        <span class="stat-value" id="statTokoVariants">0</span>
+                    </div>
+                </div>
+                <div class="stat-card stat-secondary">
+                    <div class="stat-icon">🏬</div>
+                    <div class="stat-info">
+                        <span class="stat-label">Total Tenant Aktif</span>
+                        <span class="stat-value" id="statTenantCount">0</span>
+                    </div>
+                </div>
+                <div class="stat-card stat-success">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-info">
+                        <span class="stat-label">Total Sales Hari Ini</span>
+                        <span class="stat-value" id="statTodaySales">0</span>
+                    </div>
+                </div>
+                <div class="stat-card stat-warning">
+                    <div class="stat-icon">⚠️</div>
+                    <div class="stat-info">
+                        <span class="stat-label">Total Selisih Hari Ini</span>
+                        <span class="stat-value" id="statTodaySelisih">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Access Cards -->
+            <div class="dashboard-grid">
+                <div class="dash-card" id="dashTokoCard">
+                    <div class="dash-card-header">
+                        <h3>🏪 Toko Utama</h3>
+                        <span class="dash-card-badge" id="dashTokoStatus">Belum diisi</span>
+                    </div>
+                    <div class="dash-card-body">
+                        <div class="dash-card-stats" id="dashTokoStats">
+                            <div class="mini-stat">
+                                <span class="mini-stat-label">Stok Akhir</span>
+                                <span class="mini-stat-value" id="dashTokoStokAkhir">-</span>
+                            </div>
+                            <div class="mini-stat">
+                                <span class="mini-stat-label">Sales</span>
+                                <span class="mini-stat-value" id="dashTokoSales">-</span>
+                            </div>
+                            <div class="mini-stat">
+                                <span class="mini-stat-label">Selisih</span>
+                                <span class="mini-stat-value" id="dashTokoSelisih">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="dash-card-btn" onclick="App.goToDaily('toko', 'main')">Isi Rekap Hari Ini →</button>
+                </div>
+
+                <div class="dash-card" id="dashTenantList">
+                    <div class="dash-card-header">
+                        <h3>🏬 Tenant</h3>
+                        <span class="dash-card-badge" id="dashTenantBadge">0 tenant</span>
+                    </div>
+                    <div class="dash-card-body">
+                        <div class="tenant-quick-list" id="tenantQuickList">
+                            <p class="empty-msg">Belum ada tenant. Tambahkan di Pengaturan.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Rekap Harian Section -->
+        <section class="content-section" id="section-rekap-harian">
+
+            <!-- Filters -->
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label for="dailyDate">Tanggal</label>
+                    <input type="date" id="dailyDate" class="filter-input">
+                </div>
+                <div class="filter-group">
+                    <label for="dailyLocationType">Lokasi</label>
+                    <select id="dailyLocationType" class="filter-input">
+                        <option value="toko">🏪 Toko Utama</option>
+                        <option value="tenant">🏬 Tenant</option>
+                    </select>
+                </div>
+                <div class="filter-group" id="dailyTenantGroup" style="display:none;">
+                    <label for="dailyTenantSelect">Pilih Tenant</label>
+                    <select id="dailyTenantSelect" class="filter-input">
+                        <option value="">-- Pilih Tenant --</option>
+                    </select>
+                </div>
+                <div class="filter-actions">
+                    <div class="save-status" id="saveStatus"></div>
+                </div>
+            </div>
+
+            <!-- Daily Table -->
+            <div class="table-wrapper" id="dailyTableWrapper">
+                <div class="table-actions">
+                    <input type="file" id="importDailyFile" accept=".csv" style="display:none" onchange="App.importDaily(event)">
+                    <button class="btn btn-outline" onclick="document.getElementById('importDailyFile').click()">
+                        <span>📥</span> Import CSV
+                    </button>
+                    <button class="btn btn-outline" id="btnExportDaily" onclick="App.exportDaily()" disabled>
+                        <span>📤</span> Export CSV
+                    </button>
+                </div>
+                <div class="table-scroll">
+                    <table class="data-table" id="dailyTable">
+                        <thead>
+                            <tr>
+                                <th class="col-no sticky-col">No</th>
+                                <th class="col-varian sticky-col-2">Varian</th>
+                                <th class="col-num col-group-masuk" colspan="4">MASUK</th>
+                                <th class="col-num col-group-keluar" colspan="8">KELUAR</th>
+                                <th class="col-num col-group-result" colspan="3">HASIL</th>
+                            </tr>
+                            <tr>
+                                <th class="col-no sticky-col"></th>
+                                <th class="col-varian sticky-col-2"></th>
+                                <th class="col-num">Stok Awal</th>
+                                <th class="col-num">Stok In</th>
+                                <th class="col-num">Rolling Masuk</th>
+                                <th class="col-num col-calc">Total Masuk</th>
+                                <th class="col-num">Sales</th>
+                                <th class="col-num">Return Exp</th>
+                                <th class="col-num">Return Tester</th>
+                                <th class="col-num">Keep PO</th>
+                                <th class="col-num">Mix Adj</th>
+                                <th class="col-num">Kirim Stok</th>
+                                <th class="col-num">Rolling Keluar</th>
+                                <th class="col-num col-calc">Total Keluar</th>
+                                <th class="col-num col-calc">Stok Akhir</th>
+                                <th class="col-num">Stok Avail. Closing</th>
+                                <th class="col-num col-selisih">Selisih</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dailyTableBody">
+                            <tr class="empty-row">
+                                <td colspan="17" class="empty-cell">
+                                    <div class="empty-state">
+                                        <span class="empty-icon">📋</span>
+                                        <p>Pilih tanggal dan lokasi</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tfoot id="dailyTableFoot" style="display:none;">
+                            <tr class="total-row">
+                                <td class="sticky-col"></td>
+                                <td class="sticky-col-2"><strong>TOTAL</strong></td>
+                                <td id="totalStokAwal">0</td>
+                                <td id="totalStokIn">0</td>
+                                <td id="totalRollingMasuk">0</td>
+                                <td id="totalTotalMasuk">0</td>
+                                <td id="totalSales">0</td>
+                                <td id="totalReturnExp">0</td>
+                                <td id="totalReturnTester">0</td>
+                                <td id="totalKeepPO">0</td>
+                                <td id="totalMixAdj">0</td>
+                                <td id="totalKirimStok">0</td>
+                                <td id="totalRollingKeluar">0</td>
+                                <td id="totalTotalKeluar">0</td>
+                                <td id="totalStokAkhir">0</td>
+                                <td id="totalStokAvailable">0</td>
+                                <td id="totalSelisih">0</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Rekap Bulanan Section -->
+        <section class="content-section" id="section-rekap-bulanan">
+            <!-- Filters -->
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label for="monthlyMonth">Bulan</label>
+                    <input type="month" id="monthlyMonth" class="filter-input">
+                </div>
+                <div class="filter-group">
+                    <label for="monthlyLocationType">Lokasi</label>
+                    <select id="monthlyLocationType" class="filter-input">
+                        <option value="toko">🏪 Toko Utama</option>
+                        <option value="tenant">🏬 Tenant</option>
+                    </select>
+                </div>
+                <div class="filter-group" id="monthlyTenantGroup" style="display:none;">
+                    <label for="monthlyTenantSelect">Pilih Tenant</label>
+                    <select id="monthlyTenantSelect" class="filter-input">
+                        <option value="">-- Pilih Tenant --</option>
+                    </select>
+                </div>
+                <div class="filter-actions">
+                    <div id="monthlyLoadStatus"></div>
+                </div>
+            </div>
+
+            <!-- Monthly Table -->
+            <div class="table-wrapper" id="monthlyTableWrapper">
+                <div class="table-actions">
+                    <button class="btn btn-outline" id="btnExportMonthly" onclick="App.exportMonthly()" disabled>
+                        <span>📤</span> Export CSV
+                    </button>
+                </div>
+                <div class="table-scroll">
+                    <table class="data-table" id="monthlyTable">
+                        <thead>
+                            <tr>
+                                <th class="col-no sticky-col">No</th>
+                                <th class="col-varian sticky-col-2">Varian</th>
+                                <th class="col-num col-group-masuk" colspan="4">MASUK</th>
+                                <th class="col-num col-group-keluar" colspan="8">KELUAR</th>
+                                <th class="col-num col-group-result" colspan="3">HASIL</th>
+                            </tr>
+                            <tr>
+                                <th class="col-no sticky-col"></th>
+                                <th class="col-varian sticky-col-2"></th>
+                                <th class="col-num">Stok Awal</th>
+                                <th class="col-num">Stok In</th>
+                                <th class="col-num">Rolling Masuk</th>
+                                <th class="col-num col-calc">Total Masuk</th>
+                                <th class="col-num">Sales</th>
+                                <th class="col-num">Return Exp</th>
+                                <th class="col-num">Return Tester</th>
+                                <th class="col-num">Keep PO</th>
+                                <th class="col-num">Mix Adj</th>
+                                <th class="col-num">Kirim Stok</th>
+                                <th class="col-num">Rolling Keluar</th>
+                                <th class="col-num col-calc">Total Keluar</th>
+                                <th class="col-num col-calc">Stok Akhir</th>
+                                <th class="col-num">Stok Avail. Closing</th>
+                                <th class="col-num col-selisih">Selisih</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monthlyTableBody">
+                            <tr class="empty-row">
+                                <td colspan="17" class="empty-cell">
+                                    <div class="empty-state">
+                                        <span class="empty-icon">📆</span>
+                                        <p>Pilih bulan dan lokasi</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tfoot id="monthlyTableFoot" style="display:none;">
+                            <tr class="total-row">
+                                <td class="sticky-col"></td>
+                                <td class="sticky-col-2"><strong>TOTAL</strong></td>
+                                <td id="mTotalStokAwal">0</td>
+                                <td id="mTotalStokIn">0</td>
+                                <td id="mTotalRollingMasuk">0</td>
+                                <td id="mTotalTotalMasuk">0</td>
+                                <td id="mTotalSales">0</td>
+                                <td id="mTotalReturnExp">0</td>
+                                <td id="mTotalReturnTester">0</td>
+                                <td id="mTotalKeepPO">0</td>
+                                <td id="mTotalMixAdj">0</td>
+                                <td id="mTotalKirimStok">0</td>
+                                <td id="mTotalRollingKeluar">0</td>
+                                <td id="mTotalTotalKeluar">0</td>
+                                <td id="mTotalStokAkhir">0</td>
+                                <td id="mTotalStokAvailable">0</td>
+                                <td id="mTotalSelisih">0</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- Daily breakdown in monthly view -->
+                <div class="monthly-breakdown" id="monthlyBreakdown" style="display:none;">
+                    <h3 class="breakdown-title">📅 Detail Per Hari</h3>
+                    <div class="breakdown-list" id="breakdownList"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Pengaturan Section -->
+        <section class="content-section" id="section-pengaturan">
+            <div class="section-header">
+                <h2>Pengaturan</h2>
+                <p class="section-desc">Kelola varian, tenant, dan data</p>
+            </div>
+
+            <div class="settings-grid settings-grid-4col">
+                <!-- Col 1: Varian Toko -->
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <h3>🏪 Varian Toko</h3>
+                        <button class="btn btn-sm btn-primary" onclick="App.addVariant('toko')">+ Tambah</button>
+                    </div>
+                    <div class="settings-card-body">
+                        <div class="variant-list" id="tokoVariantList">
+                            <p class="empty-msg">Memuat...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Col 2: Varian Tenant -->
+                <div class="settings-card">
+                    <div class="settings-card-header" style="flex-wrap:wrap;gap:8px;">
+                        <h3>🏬 Varian Tenant</h3>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div id="tenantVariantHeader"><!-- tenant selector rendered by JS --></div>
+                            <button class="btn btn-sm btn-primary" id="btnAddTenantVariant"
+                                onclick="App.addVariant('tenant')" disabled>+ Tambah</button>
+                        </div>
+                    </div>
+                    <div class="settings-card-body">
+                        <div class="variant-list" id="tenantVariantList">
+                            <p class="empty-msg">Pilih tenant untuk mengelola varian</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Col 3: Daftar Tenant -->
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <h3>📍 Daftar Tenant</h3>
+                        <button class="btn btn-sm btn-primary" onclick="App.addTenant()">+ Tambah Tenant</button>
+                    </div>
+                    <div class="settings-card-body">
+                        <div class="tenant-list" id="tenantSettingsList">
+                            <p class="empty-msg">Memuat...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Col 4: Password + Backup (stacked) -->
+                <div class="settings-card-stack">
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <h3>🔐 Password</h3>
+                        </div>
+                        <div class="settings-card-body">
+                            <div class="backup-actions">
+                                <button class="btn btn-outline" onclick="App.openChangePassword()">
+                                    <span>🔑</span> Ubah Password
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <h3>💾 Backup</h3>
+                        </div>
+                        <div class="settings-card-body">
+                            <div class="backup-actions">
+                                <button class="btn btn-outline" onclick="App.exportAllData()">
+                                    <span>📤</span> Export Data
+                                </button>
+                                <div class="import-wrapper">
+                                    <input type="file" id="importFile" accept=".json" style="display:none"
+                                        onchange="App.importAllData(event)">
+                                    <button class="btn btn-outline" onclick="document.getElementById('importFile').click()">
+                                        <span>📥</span> Import Data
+                                    </button>
+                                </div>
+                                <button class="btn btn-danger" onclick="App.initDefaults()">
+                                    <span>🔄</span> Reset Default
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Notes Modal -->
+    <div class="notes-overlay" id="notesOverlay" style="display:none;">
+        <div class="notes-modal">
+            <div class="notes-modal-header">
+                <div class="notes-header-left">
+                    <span class="notes-header-icon">📝</span>
+                    <h3>Catatan Harian</h3>
+                </div>
+                <button class="modal-close" onclick="App.closeNotes()">&times;</button>
+            </div>
+            <div class="notes-date-nav">
+                <button class="notes-date-btn" onclick="App.notesDatePrev()" title="Hari sebelumnya">‹</button>
+                <div class="notes-date-display">
+                    <input type="date" id="notesDate" class="notes-date-input" onchange="App.onNotesDateChange()">
+                    <span class="notes-date-label" id="notesDateLabel"></span>
+                </div>
+                <button class="notes-date-btn" onclick="App.notesDateNext()" title="Hari berikutnya">›</button>
+            </div>
+            <div class="notes-body">
+                <textarea id="notesTextarea" class="notes-textarea" placeholder="Tulis catatan untuk hari ini...&#10;&#10;Contoh:&#10;• Stok opname jam 14:00&#10;• Kirim barang ke tenant A&#10;• Barang retur dari customer" oninput="App.onNotesInput()"></textarea>
+            </div>
+            <div class="notes-footer">
+                <div class="notes-save-status" id="notesSaveStatus">
+                    <span class="notes-status-dot"></span>
+                    <span class="notes-status-text">Siap</span>
+                </div>
+                <div class="notes-footer-actions">
+                    <button class="btn btn-outline btn-sm" onclick="App.clearNotes()" title="Hapus catatan hari ini">🗑️ Hapus</button>
+                    <button class="btn btn-outline btn-sm" onclick="App.closeNotes()">Tutup</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Modal Overlay -->
+    <div class="modal-overlay" id="modalOverlay" style="display:none;">
+        <div class="modal" id="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">Modal</h3>
+                <button class="modal-close" onclick="App.closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display:none;">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Memuat data...</p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="../js/firebase-config.js"></script>
+    <script src="../js/utils.js"></script>
+    <script src="../js/data.js"></script>
+    <script src="../js/app.js"></script>
+</body>
+
+</html>
