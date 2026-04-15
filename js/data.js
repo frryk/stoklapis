@@ -42,12 +42,12 @@ const DataManager = {
             if (doc.exists) {
                 const data = doc.data();
                 if (locationType === 'toko') {
-                    if (data.tokoVariants && data.tokoVariants.length > 0) {
+                    if (data.tokoVariants !== undefined && Array.isArray(data.tokoVariants)) {
                         return data.tokoVariants;
                     }
                 } else {
                     // Per-tenant variants stored in tenantVariantsMap
-                    if (data.tenantVariantsMap && data.tenantVariantsMap[locationId] && data.tenantVariantsMap[locationId].length > 0) {
+                    if (data.tenantVariantsMap && data.tenantVariantsMap[locationId] !== undefined && Array.isArray(data.tenantVariantsMap[locationId])) {
                         return data.tenantVariantsMap[locationId];
                     }
                 }
@@ -74,10 +74,10 @@ const DataManager = {
         
         try {
             if (locationType === 'toko') {
-                await db.collection('settings').doc('config').set(
-                    { tokoVariants: variants, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
-                    { merge: true }
-                );
+                await db.collection('settings').doc('config').update({
+                    tokoVariants: variants,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
             } else {
                 // Use update() for dot-notation nested field paths
                 await db.collection('settings').doc('config').update({
@@ -266,6 +266,45 @@ const DataManager = {
         } catch (error) {
             console.error('Error loading monthly data:', error);
             return [];
+        }
+    },
+
+    /**
+     * Save monthly summary override data
+     */
+    async saveMonthlySummary(locationType, locationId, monthStr, dataMap) {
+        if (!firebaseReady) return false;
+        try {
+            const docId = Utils.createDocId(locationType, locationId, monthStr);
+            await db.collection('monthly_summary').doc(docId).set({
+                locationType,
+                locationId,
+                month: monthStr,
+                data: dataMap,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            return true;
+        } catch (error) {
+            console.error('Error saving monthly summary:', error);
+            return false;
+        }
+    },
+
+    /**
+     * Load monthly summary override data
+     */
+    async loadMonthlySummary(locationType, locationId, monthStr) {
+        if (!firebaseReady) return null;
+        try {
+            const docId = Utils.createDocId(locationType, locationId, monthStr);
+            const doc = await db.collection('monthly_summary').doc(docId).get();
+            if (doc.exists) {
+                return doc.data().data;
+            }
+            return null;
+        } catch (error) {
+            console.error('Error loading monthly summary:', error);
+            return null;
         }
     },
 

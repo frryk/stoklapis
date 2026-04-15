@@ -1000,18 +1000,23 @@ body::before {
 
 /* Total row */
 .total-row td {
-    padding: 12px 10px !important;
+    padding: 8px 4px !important;
     background: var(--bg-total-row) !important;
     color: var(--gold-light);
     font-family: var(--font-mono);
     font-weight: 700;
-    font-size: 0.88rem;
+    font-size: 0.82rem;
     border-top: 2px solid var(--border-gold);
+    text-align: center;
 }
 
 .total-row .sticky-col,
 .total-row .sticky-col-2 {
     background: var(--bg-total-row) !important;
+}
+
+.total-row .sticky-col-2 {
+    text-align: left !important;
 }
 
 /* No column */

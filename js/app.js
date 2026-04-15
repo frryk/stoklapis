@@ -37,6 +37,7 @@ const App = {
         // Set default date inputs
         document.getElementById('dailyDate').value = Utils.getToday();
         document.getElementById('monthlyMonth').value = Utils.getCurrentMonth();
+        document.getElementById('rtMonth').value = Utils.getCurrentMonth();
 
         // Setup navigation
         this.setupNavigation();
@@ -261,6 +262,7 @@ const App = {
         const titles = {
             'dashboard': 'Dashboard',
             'rekap-harian': 'Rekap Harian',
+            'rekap-total': 'Rekap Total Terjual',
             'rekap-bulanan': 'Rekap Bulanan',
             'pengaturan': 'Pengaturan'
         };
@@ -274,6 +276,7 @@ const App = {
         // Refresh section data
         if (section === 'dashboard') this.refreshDashboard();
         if (section === 'pengaturan') this.renderSettings();
+        if (section === 'rekap-total') this.loadRekapTotalData();
     },
 
     setupMobileMenu() {
@@ -315,6 +318,15 @@ const App = {
             if (e.target.value === 'toko') this.onMonthlyFilterChange();
         });
         document.getElementById('monthlyTenantSelect').addEventListener('change', () => this.onMonthlyFilterChange());
+
+        // Rekap Total filters
+        document.getElementById('rtMonth').addEventListener('change', () => this.loadRekapTotalData());
+        document.getElementById('rtLocationType').addEventListener('change', (e) => {
+            const tenantGroup = document.getElementById('rtTenantGroup');
+            tenantGroup.style.display = e.target.value === 'tenant' ? 'flex' : 'none';
+            this.loadRekapTotalData();
+        });
+        document.getElementById('rtTenantSelect').addEventListener('change', () => this.loadRekapTotalData());
     },
 
     onDailyFilterChange() {
@@ -330,14 +342,16 @@ const App = {
     },
 
     populateTenantDropdowns() {
-        const selects = ['dailyTenantSelect', 'monthlyTenantSelect'];
-        selects.forEach(selId => {
-            const sel = document.getElementById(selId);
-            sel.innerHTML = '<option value="">-- Pilih Tenant --</option>';
-            this.tenantsList.forEach(t => {
-                sel.innerHTML += `<option value="${t.id}">${t.name}</option>`;
-            });
+        const dailySelect = document.getElementById('dailyTenantSelect');
+        const monthlySelect = document.getElementById('monthlyTenantSelect');
+        const rtSelect = document.getElementById('rtTenantSelect');
+        let html = '<option value="">-- Pilih Tenant --</option>';
+        this.tenantsList.forEach(t => {
+            html += `<option value="${t.id}">${t.name}</option>`;
         });
+        dailySelect.innerHTML = html;
+        monthlySelect.innerHTML = html;
+        if (rtSelect) rtSelect.innerHTML = html;
     },
 
     getSelectedLocation(prefix) {
@@ -362,11 +376,63 @@ const App = {
     async refreshDashboard() {
         if (!firebaseReady) return;
 
-        // Update stats
-        document.getElementById('statTokoVariants').textContent = this.tokoVariants.length;
         document.getElementById('statTenantCount').textContent = this.tenantsList.length;
 
-        // Load today's toko data
+        // Populate Monthly Aggregates for Dashboard
+        const currentMonthStr = Utils.getToday().substring(0, 7);
+        let totalSalesMonthly = 0;
+        let totalSelisihMonthly = 0;
+        let tenantSalesRecord = {}; // tenantId -> sales
+        
+        try {
+            // Load Toko Monthly Data
+            const tokoMonthly = await DataManager.loadMonthlyStockData('toko', 'main', currentMonthStr);
+            tokoMonthly.forEach(dayInfo => {
+                if (!dayInfo.items) return;
+                dayInfo.items.forEach(item => {
+                    totalSalesMonthly += Number(item.sales) || 0;
+                    totalSelisihMonthly += Number(item.selisih) || 0;
+                });
+            });
+
+            // Load Tenants Monthly Data
+            const promises = this.tenantsList.map(t => DataManager.loadMonthlyStockData('tenant', t.id, currentMonthStr).then(res => ({id: t.id, name: t.name, data: res})));
+            const tenantsRes = await Promise.all(promises);
+            
+            tenantsRes.forEach(tenantSummary => {
+                let currentTenantSales = 0;
+                tenantSummary.data.forEach(dayInfo => {
+                    if (!dayInfo.items) return;
+                    dayInfo.items.forEach(item => {
+                        const s = Number(item.sales) || 0;
+                        currentTenantSales += s;
+                        totalSalesMonthly += s;
+                        totalSelisihMonthly += Number(item.selisih) || 0;
+                    });
+                });
+                tenantSalesRecord[tenantSummary.name] = currentTenantSales;
+            });
+
+            // Find Top Tenant
+            let topTenantName = '-';
+            let maxSales = 0;
+            for (const [tName, salesAmount] of Object.entries(tenantSalesRecord)) {
+                if (salesAmount > maxSales) {
+                    maxSales = salesAmount;
+                    topTenantName = tName;
+                }
+            }
+
+            // Update UI
+            document.getElementById('statMonthlySales').textContent = Utils.formatNumber(totalSalesMonthly);
+            document.getElementById('statMonthlySelisih').textContent = Utils.formatNumber(totalSelisihMonthly);
+            document.getElementById('statTopTenant').textContent = topTenantName !== '-' ? `${topTenantName} (${Utils.formatNumber(maxSales)})` : '-';
+
+        } catch (error) {
+            console.error('Error fetching dashboard monthly metrics', error);
+        }
+
+        // Load today's toko data for the Quick Access Card
         const today = Utils.getToday();
         const tokoData = await DataManager.loadStockData('toko', 'main', today);
         
@@ -377,9 +443,6 @@ const App = {
             document.getElementById('dashTokoSelisih').textContent = Utils.formatNumber(totals.selisih);
             document.getElementById('dashTokoStatus').textContent = 'Sudah diisi';
             document.getElementById('dashTokoStatus').classList.add('filled');
-
-            document.getElementById('statTodaySales').textContent = Utils.formatNumber(totals.sales);
-            document.getElementById('statTodaySelisih').textContent = Utils.formatNumber(totals.selisih);
         } else {
             document.getElementById('dashTokoStokAkhir').textContent = '-';
             document.getElementById('dashTokoSales').textContent = '-';
@@ -566,33 +629,33 @@ const App = {
             html += `<td class="sticky-col-2 col-varian">${row.variantName}</td>`;
             
             // Stok Awal
-            html += `<td><input type="number" step="0.01" class="cell-input" value="${row.stokAwal}" data-field="stokAwal" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
+            html += `<td><input type="text" inputmode="decimal" class="cell-input" value="${row.stokAwal}" data-field="stokAwal" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
             // Stok In
-            html += `<td><input type="number" step="0.01" class="cell-input" value="${row.stokIn}" data-field="stokIn" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
+            html += `<td><input type="text" inputmode="decimal" class="cell-input" value="${row.stokIn}" data-field="stokIn" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
             // Rolling Masuk
-            html += `<td><input type="number" step="0.01" class="cell-input" value="${row.rollingMasuk}" data-field="rollingMasuk" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
+            html += `<td><input type="text" inputmode="decimal" class="cell-input" value="${row.rollingMasuk}" data-field="rollingMasuk" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
             // Total Masuk (calculated)
             html += `<td class="cell-calc" id="calc_totalMasuk_${idx}">${Utils.f2(calc.totalMasuk)}</td>`;
             // Sales
-            html += `<td><input type="number" step="0.01" class="cell-input" value="${row.sales}" data-field="sales" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
+            html += `<td><input type="text" inputmode="decimal" class="cell-input" value="${row.sales}" data-field="sales" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
             // Return Exp
-            html += `<td><input type="number" step="0.01" class="cell-input" value="${row.returnExp}" data-field="returnExp" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
+            html += `<td><input type="text" inputmode="decimal" class="cell-input" value="${row.returnExp}" data-field="returnExp" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
             // Return Tester
-            html += `<td><input type="number" step="0.01" class="cell-input" value="${row.returnTester}" data-field="returnTester" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
+            html += `<td><input type="text" inputmode="decimal" class="cell-input" value="${row.returnTester}" data-field="returnTester" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
             // Keep PO
-            html += `<td><input type="number" step="0.01" class="cell-input" value="${row.keepPO}" data-field="keepPO" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
+            html += `<td><input type="text" inputmode="decimal" class="cell-input" value="${row.keepPO}" data-field="keepPO" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
             // Mix Adj
-            html += `<td><input type="number" step="0.01" class="cell-input" value="${row.mixAdj}" data-field="mixAdj" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
+            html += `<td><input type="text" inputmode="decimal" class="cell-input" value="${row.mixAdj}" data-field="mixAdj" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
             // Kirim Stok
-            html += `<td><input type="number" step="0.01" class="cell-input" value="${row.kirimStok}" data-field="kirimStok" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
+            html += `<td><input type="text" inputmode="decimal" class="cell-input" value="${row.kirimStok}" data-field="kirimStok" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
             // Rolling Keluar
-            html += `<td><input type="number" step="0.01" class="cell-input" value="${row.rollingKeluar}" data-field="rollingKeluar" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
+            html += `<td><input type="text" inputmode="decimal" class="cell-input" value="${row.rollingKeluar}" data-field="rollingKeluar" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
             // Total Keluar (calculated)
             html += `<td class="cell-calc" id="calc_totalKeluar_${idx}">${Utils.f2(calc.totalKeluar)}</td>`;
             // Stok Akhir (calculated)
             html += `<td class="cell-calc" id="calc_stokAkhir_${idx}">${Utils.f2(calc.stokAkhir)}</td>`;
             // Stok Available Closing
-            html += `<td><input type="number" step="0.01" class="cell-input" value="${row.stokAvailable}" data-field="stokAvailable" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
+            html += `<td><input type="text" inputmode="decimal" class="cell-input" value="${row.stokAvailable}" data-field="stokAvailable" data-idx="${idx}" onchange="App.onCellChange(this)" onfocus="this.select()"></td>`;
             // Selisih (calculated)
             html += `<td class="cell-calc ${selisihClass}" id="calc_selisih_${idx}">${Utils.f2(calc.selisih)}</td>`;
             
@@ -607,9 +670,28 @@ const App = {
     onCellChange(input) {
         const idx = parseInt(input.dataset.idx);
         const field = input.dataset.field;
-        const value = parseFloat(input.value) || 0;
+        let value = 0;
+        
+        try {
+            // Evaluasi input sebagai operasi matematika dasar (+, -, *, /) jika memungkinkan
+            // Ganti koma dengan titik untuk desimal
+            let expr = input.value.trim().replace(/,/g, '.');
+            if (expr === '') expr = '0';
+            
+            // Biarkan browser hanya mengevaluasi karakter matematika yang aman
+            if (/^[-+*/.0-9\s()]+$/.test(expr)) {
+                // Aman menggunakan fungsi untuk evaluasi matematika sederhana
+                value = new Function(`return (${expr})`)() || 0;
+            } else {
+                value = parseFloat(expr) || 0;
+            }
+        } catch (e) {
+            console.error('Invalid math expression:', e);
+            value = parseFloat(input.value) || 0;
+        }
 
-        // Update data
+        // Tampilkan value yang sudah dieksekusi di input box
+        input.value = value;
         this.dailyData[idx][field] = value;
 
         // Recalculate
@@ -862,7 +944,15 @@ const App = {
     // ========================================
 
     async loadMonthlyData() {
-        const location = this.getSelectedLocation('monthly');
+        const locationType = document.getElementById('monthlyLocationType').value;
+        const locationId = locationType === 'tenant' ? document.getElementById('monthlyTenantSelect').value : 'main';
+        
+        if (locationType === 'tenant' && !locationId) {
+            Utils.toast('Pilih tenant terlebih dahulu', 'warning');
+            return;
+        }
+
+        let location = { locationType, locationId };
         if (!location) return;
 
         const monthStr = document.getElementById('monthlyMonth').value;
@@ -1012,6 +1102,190 @@ const App = {
         document.getElementById('mTotalStokAkhir').textContent = Utils.f2(totals.stokAkhir);
         document.getElementById('mTotalStokAvailable').textContent = Utils.f2(totals.stokAvailable);
         document.getElementById('mTotalSelisih').textContent = Utils.f2(totals.selisih);
+    },
+
+    // ========================================
+    // Rekap Total Terjual (Setara Full)
+    // ========================================
+
+    async loadRekapTotalData() {
+        const monthStr = document.getElementById('rtMonth').value;
+        if (!monthStr) {
+            Utils.toast('Pilih bulan terlebih dahulu', 'warning');
+            return;
+        }
+
+        const locationType = document.getElementById('rtLocationType').value;
+        const locationId = locationType === 'tenant' ? document.getElementById('rtTenantSelect').value : (locationType === 'toko' ? 'main' : 'semua');
+        
+        if (locationType === 'tenant' && !locationId) {
+            Utils.toast('Pilih tenant terlebih dahulu', 'warning');
+            return;
+        }
+
+        Utils.showLoading();
+
+        try {
+            let allItems = [];
+            const promises = [];
+
+            if (locationType === 'semua') {
+                promises.push(DataManager.loadMonthlyStockData('toko', 'main', monthStr));
+                this.tenantsList.forEach(t => {
+                    promises.push(DataManager.loadMonthlyStockData('tenant', t.id, monthStr));
+                });
+            } else {
+                promises.push(DataManager.loadMonthlyStockData(locationType, locationId, monthStr));
+            }
+
+            const results = await Promise.all(promises);
+            results.forEach(locDays => {
+                locDays.forEach(day => {
+                    if (day.items) {
+                        allItems.push(...day.items);
+                    }
+                });
+            });
+
+            // Aggregate by variantName exactly (handles duplicate names from different tenants cleanly)
+            const aggregated = {};
+            allItems.forEach(item => {
+                const vName = String(item.variantName).trim();
+                // We use baseName immediately so we don't even need to group twice, but grouping here avoids missing types
+                if (!aggregated[vName]) {
+                    aggregated[vName] = { variantName: vName, sales: 0 };
+                }
+                aggregated[vName].sales += Number(item.sales) || 0;
+            });
+
+            this.rekapTotalData = Object.values(aggregated);
+            
+            // Try to load overrides for the specific location scope
+            this.monthlySummaryOverrides = await DataManager.loadMonthlySummary(locationType, locationId, monthStr) || {};
+
+            this.renderMonthlySalesSummary(monthStr);
+        } catch (err) {
+            console.error('Error load rekap total:', err);
+            Utils.toast('Gagal memuat Rekap Total', 'error');
+        }
+
+        Utils.hideLoading();
+    },
+
+    renderMonthlySalesSummary(monthStr) {
+        const wrapper = document.getElementById('rtSalesSummaryWrapper');
+        const tbody = document.getElementById('rtSalesSummaryBody');
+        const tfoot = document.getElementById('rtSalesSummaryFoot');
+
+        if (!this.rekapTotalData || this.rekapTotalData.length === 0) {
+            if (wrapper) wrapper.style.display = 'none';
+            return;
+        }
+
+        let html = '';
+        let totalPcsFullAll = 0;
+        let totalPcsHalfAll = 0;
+        let totalPcsSmallAll = 0;
+        let totalEquivalentAll = 0;
+
+        // Group variants by base name
+        const grouped = {};
+
+        this.rekapTotalData.forEach((row) => {
+            const variantName = row.variantName;
+            const lowerName = variantName.toLowerCase();
+            const sales = row.sales || 0;
+            
+            // Extract base name by removing trailing 'full', 'half', 'small'
+            let baseName = variantName.replace(/full|half|small/ig, '').trim();
+            // Fallback if variant name was literally just "Full" etc.
+            if (!baseName) baseName = variantName;
+
+            if (!grouped[baseName]) {
+                grouped[baseName] = { full: 0, half: 0, small: 0 };
+            }
+
+            if (lowerName.includes('half')) {
+                grouped[baseName].half += sales;
+            } else if (lowerName.includes('small')) {
+                grouped[baseName].small += sales;
+            } else {
+                // Treats 'full' or without size descriptor as Full
+                grouped[baseName].full += sales;
+            }
+        });
+
+        let idx = 0;
+        for (const [baseName, data] of Object.entries(grouped)) {
+            // Apply loaded overrides if they exist
+            const overrides = this.monthlySummaryOverrides[baseName] || {};
+            const valFull = overrides.full !== undefined ? overrides.full : data.full;
+            const valHalf = overrides.half !== undefined ? overrides.half : data.half;
+            const valSmall = overrides.small !== undefined ? overrides.small : data.small;
+
+            const eqFull = valFull * 1;
+            const eqHalf = valHalf * 0.5;
+            const eqSmall = valSmall * 0.25;
+            const totalEq = eqFull + eqHalf + eqSmall;
+
+            totalPcsFullAll += valFull;
+            totalPcsHalfAll += valHalf;
+            totalPcsSmallAll += valSmall;
+            totalEquivalentAll += totalEq;
+
+            html += `<tr>`;
+            html += `<td style="text-align:center;" class="col-no">${idx + 1}</td>`;
+            html += `<td style="text-align:left;" class="col-varian">${baseName}</td>`;
+            html += `<td><input type="text" inputmode="decimal" class="cell-input" style="text-align:center; width:100px;" value="${Utils.f2(valFull)}" onchange="App.onMonthlySummaryChange(this, '${baseName}', 'full')"></td>`;
+            html += `<td><input type="text" inputmode="decimal" class="cell-input" style="text-align:center; width:100px;" value="${Utils.f2(valHalf)}" onchange="App.onMonthlySummaryChange(this, '${baseName}', 'half')"></td>`;
+            html += `<td><input type="text" inputmode="decimal" class="cell-input" style="text-align:center; width:100px;" value="${Utils.f2(valSmall)}" onchange="App.onMonthlySummaryChange(this, '${baseName}', 'small')"></td>`;
+            html += `<td class="cell-calc calc-eq-${idx}" style="text-align:center; background:rgba(201,169,110,0.05); font-weight:bold;">${Utils.f2(totalEq)}</td>`;
+            html += `</tr>`;
+            idx++;
+        }
+
+        const tfootHtml = `
+            <tr class="total-row" id="monthlySummaryTotals">
+                <td colspan="2" style="text-align:right; font-weight:bold; padding-right:15px;">TOTAL KESELURUHAN</td>
+                <td style="text-align:center;" id="mSummTotalFull">${Utils.f2(totalPcsFullAll)}</td>
+                <td style="text-align:center;" id="mSummTotalHalf">${Utils.f2(totalPcsHalfAll)}</td>
+                <td style="text-align:center;" id="mSummTotalSmall">${Utils.f2(totalPcsSmallAll)}</td>
+                <td style="text-align:center; color:var(--success); font-weight:bold; font-size:1.1em; background:rgba(201,169,110,0.15);" id="mSummTotalEq">${Utils.f2(totalEquivalentAll)}</td>
+            </tr>
+        `;
+
+        tbody.innerHTML = html;
+        tfoot.innerHTML = tfootHtml;
+        wrapper.style.display = 'block';
+    },
+
+    async onMonthlySummaryChange(inputElement, baseName, sizeType) {
+        let valStr = inputElement.value.trim().replace(/,/g, '.');
+        if (valStr === '') valStr = '0';
+        let val = 0;
+        try {
+            if (/^[-+*/.0-9\s()]+$/.test(valStr)) val = new Function(`return (${valStr})`)() || 0;
+            else val = parseFloat(valStr) || 0;
+        } catch (e) {
+            val = parseFloat(inputElement.value) || 0;
+        }
+
+        inputElement.value = val;
+
+        if (!this.monthlySummaryOverrides) this.monthlySummaryOverrides = {};
+        if (!this.monthlySummaryOverrides[baseName]) {
+            this.monthlySummaryOverrides[baseName] = {};
+        }
+        this.monthlySummaryOverrides[baseName][sizeType] = val;
+
+        // Auto save overrides
+        const locationType = document.getElementById('rtLocationType').value;
+        const locationId = locationType === 'tenant' ? document.getElementById('rtTenantSelect').value : (locationType === 'toko' ? 'main' : 'semua');
+        const monthStr = document.getElementById('rtMonth').value;
+        await DataManager.saveMonthlySummary(locationType, locationId, monthStr, this.monthlySummaryOverrides);
+
+        // Re-render natively since dataset didn't change, just overrides and totals
+        this.renderMonthlySalesSummary(monthStr);
     },
 
     renderMonthlyBreakdown(allDays, monthStr) {
@@ -1179,9 +1453,13 @@ const App = {
 
         // Update add button state
         const addBtn = document.getElementById('btnAddTenantVariant');
-        if (addBtn) {
-            addBtn.disabled = !this.selectedSettingsTenantId;
-        }
+        const importBtn = document.getElementById('btnImportTenantVariant');
+        const copyBtn = document.getElementById('btnCopyTokoVariant');
+        
+        const isTenantSelected = !!this.selectedSettingsTenantId;
+        if (addBtn) addBtn.disabled = !isTenantSelected;
+        if (importBtn) importBtn.disabled = !isTenantSelected;
+        if (copyBtn) copyBtn.disabled = !isTenantSelected;
 
         // Render variant list for selected tenant
         this.renderVariantList('tenant', this.selectedSettingsTenantId);
@@ -1190,7 +1468,13 @@ const App = {
     onSettingsTenantChange(tenantId) {
         this.selectedSettingsTenantId = tenantId || null;
         const addBtn = document.getElementById('btnAddTenantVariant');
+        const importBtn = document.getElementById('btnImportTenantVariant');
+        const copyBtn = document.getElementById('btnCopyTokoVariant');
+        
         if (addBtn) addBtn.disabled = !tenantId;
+        if (importBtn) importBtn.disabled = !tenantId;
+        if (copyBtn) copyBtn.disabled = !tenantId;
+        
         this.renderVariantList('tenant', this.selectedSettingsTenantId);
     },
 
@@ -1376,6 +1660,110 @@ const App = {
         }
     },
 
+    /**
+     * Copy all Toko variants to current selected Tenant
+     */
+    async copyTokoVariantsToTenant() {
+        if (!this.selectedSettingsTenantId) return;
+        
+        const tenant = this.tenantsList.find(t => t.id === this.selectedSettingsTenantId);
+        if (!tenant) return;
+
+        if (confirm(`Apakah Anda yakin ingin menyalin ${this.tokoVariants.length} varian dari Toko Pusat ke tenant ${tenant.name}?\nCatatan: Varian tenant saat ini akan DITAMBAHKAN dengan varian toko agar tidak kehilangan data lama.`)) {
+            // copy the toko variants but generate new IDs
+            const newVariants = this.tokoVariants.map((v, i) => ({
+                id: `tenant_v_${Date.now()}_${i}`,
+                name: v.name
+            }));
+            
+            const currentVariants = this.tenantVariantsMap[tenant.id] ? [...this.tenantVariantsMap[tenant.id]] : [];
+            const mergedVariants = [...currentVariants, ...newVariants];
+            
+            Utils.showLoading();
+            const success = await DataManager.saveVariants('tenant', mergedVariants, tenant.id);
+            if (success) {
+                this.tenantVariantsMap[tenant.id] = mergedVariants;
+                this.renderVariantList('tenant');
+                Utils.toast(`Berhasil menyalin ${newVariants.length} varian ke ${tenant.name}`, 'success');
+            } else {
+                Utils.toast('Gagal menyalin varian', 'error');
+            }
+            Utils.hideLoading();
+        }
+    },
+
+    importVariants(locationType) {
+        let tenantId = null;
+        let tenantName = 'Toko Pusat';
+        if (locationType === 'tenant') {
+            tenantId = this.selectedSettingsTenantId;
+            if (!tenantId) return;
+            const t = this.tenantsList.find(x => x.id === tenantId);
+            if (t) tenantName = t.name;
+        }
+
+        this.openModal(
+            `Import Varian (${tenantName})`,
+            `<div class="form-group">
+                <label>Masukkan daftar varian (1 baris untuk 1 varian):</label>
+                <textarea id="importVariantsData" class="form-control" rows="8" placeholder="Lapis Original Full\nLapis Original Half\nLapis Coklat Small" autofocus style="resize:vertical;"></textarea>
+                <small style="color:var(--text-muted); display:block; margin-top:5px;">Varian yang diimport otomatis <b>ditambahkan</b> menyambung daftar varian yang sudah ada.</small>
+            </div>`,
+            `<button class="btn btn-outline" onclick="App.closeModal()">Batal</button>
+             <button class="btn btn-primary" onclick="App.saveImportVariants('${locationType}', '${tenantId || ''}')">Import Varian</button>`
+        );
+        setTimeout(() => {
+            const input = document.getElementById('importVariantsData');
+            if (input) input.focus();
+        }, 100);
+    },
+
+    async saveImportVariants(locationType, tenantId) {
+        const inputElem = document.getElementById('importVariantsData');
+        const textData = inputElem ? inputElem.value.trim() : '';
+        if (!textData) {
+            Utils.toast('Daftar varian kosong', 'warning');
+            return;
+        }
+
+        const newNames = textData.split('\n').map(n => n.trim()).filter(n => n.length > 0);
+        if (newNames.length === 0) return;
+
+        let currentVariants = [];
+        if (locationType === 'toko') {
+            currentVariants = [...this.tokoVariants];
+        } else {
+            currentVariants = this.tenantVariantsMap[tenantId] ? [...this.tenantVariantsMap[tenantId]] : [];
+        }
+
+        // prevent exact duplicates in the new import batch itself
+        const toAdd = [...new Set(newNames)];
+        
+        toAdd.forEach((name, i) => {
+            currentVariants.push({
+                id: `${locationType}_v_${Date.now()}_${i}`,
+                name: name
+            });
+        });
+
+        Utils.showLoading();
+        const success = await DataManager.saveVariants(locationType, currentVariants, tenantId);
+        
+        if (success) {
+            if (locationType === 'toko') {
+                this.tokoVariants = currentVariants;
+            } else {
+                this.tenantVariantsMap[tenantId] = currentVariants;
+            }
+            this.renderVariantList(locationType);
+            this.closeModal();
+            Utils.toast(`Berhasil import ${toAdd.length} varian`, 'success');
+        } else {
+            Utils.toast('Gagal mengimport varian', 'error');
+        }
+        Utils.hideLoading();
+    },
+
     // ========================================
     // Tenant CRUD
     // ========================================
@@ -1502,7 +1890,9 @@ const App = {
         const a = document.createElement('a');
         a.href = url;
         a.download = `Lapis_Stok_Backup_${Utils.getToday()}.json`;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
         Utils.toast('Backup berhasil di-download', 'success');

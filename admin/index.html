@@ -27,9 +27,8 @@
             <div class="login-body">
                 <div class="form-group">
                     <label for="loginPasswordInput">Password</label>
-                    <input type="password" id="loginPasswordInput" class="form-control" 
-                        placeholder="Masukkan password..." 
-                        onkeydown="App.onLoginKeydown(event)">
+                    <input type="password" id="loginPasswordInput" class="form-control"
+                        placeholder="Masukkan password..." onkeydown="App.onLoginKeydown(event)">
                 </div>
                 <div class="login-error" id="loginError" style="display:none;">Password salah!</div>
                 <button class="btn btn-primary login-btn" onclick="App.login()">
@@ -64,6 +63,10 @@
             <a href="#" class="nav-item" data-section="rekap-harian" id="nav-rekap-harian">
                 <span class="nav-icon">📅</span>
                 <span class="nav-label">Rekap Harian</span>
+            </a>
+            <a href="#" class="nav-item" data-section="rekap-total" id="nav-rekap-total">
+                <span class="nav-icon">📦</span>
+                <span class="nav-label">Rekap Total Terjual</span>
             </a>
             <a href="#" class="nav-item" data-section="rekap-bulanan" id="nav-rekap-bulanan">
                 <span class="nav-icon">📆</span>
@@ -106,14 +109,28 @@
         <section class="content-section active" id="section-dashboard">
             <div class="section-header">
                 <h2>Dashboard Overview</h2>
-                <p class="section-desc">Ringkasan stok hari ini</p>
+                <p class="section-desc">Ringkasan performa bulan ini</p>
             </div>
             <div class="stats-grid" id="dashboardStats">
-                <div class="stat-card stat-primary">
-                    <div class="stat-icon">🏪</div>
+                <div class="stat-card stat-success">
+                    <div class="stat-icon">📈</div>
                     <div class="stat-info">
-                        <span class="stat-label">Total Varian Toko</span>
-                        <span class="stat-value" id="statTokoVariants">0</span>
+                        <span class="stat-label">Lapis Terjual (Bulan Ini)</span>
+                        <span class="stat-value" id="statMonthlySales">0</span>
+                    </div>
+                </div>
+                <div class="stat-card stat-warning">
+                    <div class="stat-icon">⚠️</div>
+                    <div class="stat-info">
+                        <span class="stat-label">Total Selisih (Bulan Ini)</span>
+                        <span class="stat-value" id="statMonthlySelisih">0</span>
+                    </div>
+                </div>
+                <div class="stat-card stat-primary">
+                    <div class="stat-icon">👑</div>
+                    <div class="stat-info">
+                        <span class="stat-label">Tenant Terlaris</span>
+                        <span class="stat-value" style="font-size: 1.1em; line-height: 1.2;" id="statTopTenant">-</span>
                     </div>
                 </div>
                 <div class="stat-card stat-secondary">
@@ -121,20 +138,6 @@
                     <div class="stat-info">
                         <span class="stat-label">Total Tenant Aktif</span>
                         <span class="stat-value" id="statTenantCount">0</span>
-                    </div>
-                </div>
-                <div class="stat-card stat-success">
-                    <div class="stat-icon">📈</div>
-                    <div class="stat-info">
-                        <span class="stat-label">Total Sales Hari Ini</span>
-                        <span class="stat-value" id="statTodaySales">0</span>
-                    </div>
-                </div>
-                <div class="stat-card stat-warning">
-                    <div class="stat-icon">⚠️</div>
-                    <div class="stat-info">
-                        <span class="stat-label">Total Selisih Hari Ini</span>
-                        <span class="stat-value" id="statTodaySelisih">0</span>
                     </div>
                 </div>
             </div>
@@ -209,7 +212,8 @@
             <!-- Daily Table -->
             <div class="table-wrapper" id="dailyTableWrapper">
                 <div class="table-actions">
-                    <input type="file" id="importDailyFile" accept=".csv" style="display:none" onchange="App.importDaily(event)">
+                    <input type="file" id="importDailyFile" accept=".csv" style="display:none"
+                        onchange="App.importDaily(event)">
                     <button class="btn btn-outline" onclick="document.getElementById('importDailyFile').click()">
                         <span>📥</span> Import CSV
                     </button>
@@ -385,6 +389,64 @@
                     <h3 class="breakdown-title">📅 Detail Per Hari</h3>
                     <div class="breakdown-list" id="breakdownList"></div>
                 </div>
+
+            </div>
+        </section>
+
+        <!-- Rekap Total Terjual Section -->
+        <section class="content-section" id="section-rekap-total">
+            <div class="section-header">
+                <h2>Rekap Total Terjual Berdasarkan Ukuran</h2>
+            </div>
+
+            <!-- Filters -->
+            <div class="filter-card"
+                style="display:-webkit-box; display:-ms-flexbox; display:flex; flex-wrap:wrap; align-items:flex-end; gap:15px; padding:10px 15px; margin-bottom:15px; border-radius:8px;">
+                <div class="filter-group" style="margin-bottom:0;">
+                    <label for="rtMonth" style="margin-bottom:4px; font-size:0.85em;">Bulan</label>
+                    <input type="month" id="rtMonth" class="filter-input" style="padding: 6px 10px; max-width:180px;">
+                </div>
+                <div class="filter-group" style="margin-bottom:0;">
+                    <label for="rtLocationType" style="margin-bottom:4px; font-size:0.85em;">Lokasi</label>
+                    <select id="rtLocationType" class="filter-input" style="padding: 6px 10px; min-width:180px;">
+                        <option value="semua">🌎 Gabungan Semua</option>
+                        <option value="toko">🏪 Toko Pusat</option>
+                        <option value="tenant">🏬 Tenant Spesifik</option>
+                    </select>
+                </div>
+                <div class="filter-group" id="rtTenantGroup" style="display:none; margin-bottom:0;">
+                    <label for="rtTenantSelect" style="margin-bottom:4px; font-size:0.85em;">Tenant</label>
+                    <select id="rtTenantSelect" class="filter-input" style="padding: 6px 10px; min-width:180px;">
+                        <option value="">-- Pilih Tenant --</option>
+                    </select>
+                </div>
+                <div class="filter-actions" style="margin-top:auto; margin-bottom: 6px;">
+                    <div id="rtLoadStatus"></div>
+                </div>
+            </div>
+
+            <div class="table-wrapper" id="rtSalesSummaryWrapper" style="display:none;">
+                <div class="table-scroll" style="max-height: none;">
+                    <table class="data-table" style="width: auto;">
+                        <thead>
+                            <tr>
+                                <th class="col-no" style="text-align:center;">No</th>
+                                <th class="col-varian" style="text-align:left;">Varian Lapis (Rasa)</th>
+                                <th class="col-num" style="text-align:center;">Full (Pcs)</th>
+                                <th class="col-num" style="text-align:center;">Half (Pcs)</th>
+                                <th class="col-num" style="text-align:center;">Small (Pcs)</th>
+                                <th class="col-num"
+                                    style="text-align:center; background:rgba(201,169,110,0.15); color:var(--text-primary);">
+                                    Total Setara Full</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rtSalesSummaryBody">
+                            <!-- Rendered by JS -->
+                        </tbody>
+                        <tfoot id="rtSalesSummaryFoot">
+                        </tfoot>
+                    </table>
+                </div>
             </div>
         </section>
 
@@ -398,9 +460,13 @@
             <div class="settings-grid settings-grid-4col">
                 <!-- Col 1: Varian Toko -->
                 <div class="settings-card">
-                    <div class="settings-card-header">
+                    <div class="settings-card-header" style="flex-wrap:wrap;gap:8px;">
                         <h3>🏪 Varian Toko</h3>
-                        <button class="btn btn-sm btn-primary" onclick="App.addVariant('toko')">+ Tambah</button>
+                        <div style="display:flex;align-items:center;gap:4px;">
+                            <button class="btn btn-sm btn-outline" onclick="App.importVariants('toko')"
+                                title="Import Banyak Sekaligus">📄 Import</button>
+                            <button class="btn btn-sm btn-primary" onclick="App.addVariant('toko')">+ Tambah</button>
+                        </div>
                     </div>
                     <div class="settings-card-body">
                         <div class="variant-list" id="tokoVariantList">
@@ -413,8 +479,16 @@
                 <div class="settings-card">
                     <div class="settings-card-header" style="flex-wrap:wrap;gap:8px;">
                         <h3>🏬 Varian Tenant</h3>
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <div id="tenantVariantHeader"><!-- tenant selector rendered by JS --></div>
+                        <div style="display:flex;align-items:center;gap:4px; flex-wrap:wrap;">
+                            <div id="tenantVariantHeader" style="margin-right:auto;">
+                                <!-- tenant selector rendered by JS -->
+                            </div>
+                            <button class="btn btn-sm btn-outline" id="btnImportTenantVariant"
+                                onclick="App.importVariants('tenant')" disabled title="Import Banyak Sekaligus">📄
+                                Import</button>
+                            <button class="btn btn-sm btn-outline" id="btnCopyTokoVariant"
+                                onclick="App.copyTokoVariantsToTenant()" disabled title="Salin dari Toko Pusat">📋 Salin
+                                Toko</button>
                             <button class="btn btn-sm btn-primary" id="btnAddTenantVariant"
                                 onclick="App.addVariant('tenant')" disabled>+ Tambah</button>
                         </div>
@@ -460,18 +534,16 @@
                         <div class="settings-card-body">
                             <div class="backup-actions">
                                 <button class="btn btn-outline" onclick="App.exportAllData()">
-                                    <span>📤</span> Export Data
+                                    Export Data
                                 </button>
                                 <div class="import-wrapper">
                                     <input type="file" id="importFile" accept=".json" style="display:none"
                                         onchange="App.importAllData(event)">
-                                    <button class="btn btn-outline" onclick="document.getElementById('importFile').click()">
-                                        <span>📥</span> Import Data
+                                    <button class="btn btn-outline"
+                                        onclick="document.getElementById('importFile').click()">
+                                        Import Data
                                     </button>
                                 </div>
-                                <button class="btn btn-danger" onclick="App.initDefaults()">
-                                    <span>🔄</span> Reset Default
-                                </button>
                             </div>
                         </div>
                     </div>
@@ -499,7 +571,9 @@
                 <button class="notes-date-btn" onclick="App.notesDateNext()" title="Hari berikutnya">›</button>
             </div>
             <div class="notes-body">
-                <textarea id="notesTextarea" class="notes-textarea" placeholder="Tulis catatan untuk hari ini...&#10;&#10;Contoh:&#10;• Stok opname jam 14:00&#10;• Kirim barang ke tenant A&#10;• Barang retur dari customer" oninput="App.onNotesInput()"></textarea>
+                <textarea id="notesTextarea" class="notes-textarea"
+                    placeholder="Tulis catatan untuk hari ini...&#10;&#10;Contoh:&#10;• Stok opname jam 14:00&#10;• Kirim barang ke tenant A&#10;• Barang retur dari customer"
+                    oninput="App.onNotesInput()"></textarea>
             </div>
             <div class="notes-footer">
                 <div class="notes-save-status" id="notesSaveStatus">
@@ -507,7 +581,8 @@
                     <span class="notes-status-text">Siap</span>
                 </div>
                 <div class="notes-footer-actions">
-                    <button class="btn btn-outline btn-sm" onclick="App.clearNotes()" title="Hapus catatan hari ini">🗑️ Hapus</button>
+                    <button class="btn btn-outline btn-sm" onclick="App.clearNotes()" title="Hapus catatan hari ini">🗑️
+                        Hapus</button>
                     <button class="btn btn-outline btn-sm" onclick="App.closeNotes()">Tutup</button>
                 </div>
             </div>
@@ -538,10 +613,10 @@
     </div>
 
     <!-- Scripts -->
-    <script src="../js/firebase-config.js"></script>
-    <script src="../js/utils.js"></script>
-    <script src="../js/data.js"></script>
-    <script src="../js/app.js"></script>
+    <script src="../js/firebase-config.js?v=1"></script>
+    <script src="../js/utils.js?v=1"></script>
+    <script src="../js/data.js?v=1"></script>
+    <script src="../js/app.js?v=1"></script>
 </body>
 
 </html>
