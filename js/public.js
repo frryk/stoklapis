@@ -573,7 +573,6 @@ const PublicApp = {
 
         // Use keys that have actual counts
         let baseNamesList = Object.keys(masterMap).filter(k => (masterMap[k].full + masterMap[k].half + masterMap[k].small) > 0);
-        baseNamesList.sort();
 
         let rowIdx = 0;
         let sumFull = 0, sumHalf = 0, sumSmall = 0, sumSetaraFull = 0;
